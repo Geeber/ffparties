@@ -54,49 +54,106 @@ case object BlackMage extends Member {
   val lateGame = PowerProfile(0.1, 1.0, 0.1, 0.0, false, true)
 }
 
-case class Party(index: Int, members: Seq[Member]) {
+case class GameStageScoringProfile(
+    stOffenseWeights: Seq[Double],
+    mtOffenseWeights: Seq[Double],
+    defenseWeights: Seq[Double],
+    healingWeights: Seq[Double],
+    lifeWeights: Seq[Double],
+    dungeonExitWeights: Seq[Double],
+    overallWeights: Seq[Double]) {
 
-  def score(): Double = {
-    earlyGameScore
-  }
-
-  def dotProduct(as: Seq[Double], bs: Seq[Double]): Double =
-    (for ((a, b) <- as zip bs) yield a * b) sum
-
-  private val StOffenseWeights = Seq(1.0, 0.8, 0.6, 0.6)
-  private val MtOffenseWeights = Seq(1.0, 0.6, 0.4, 0.4)
-  private val DefenseWeights = Seq(1.0, 0.5, 0.25, 0.25)
-  private val HealingWeights = Seq(1.0, 0.8, 0.5, 0.5)
-  private val LifeWeights = Seq(1.0, 0.2, 0.1, 0.05)
-  private val DungeonExitWeights = Seq(1.0, 0.1, 0.05, 0.05)
-  private val EarlyGameWeights = Seq(1.0, 1.0, 1.0, 0.5, 0.0, 0.0)
-
-  def earlyGameScore(): Double = {
-    val earlyMembers = members.map(_.earlyGame)
-
+  def score(profiles: Seq[PowerProfile]): Double = {
     // Compute single target offense.
-    val stOffenses = earlyMembers.map(_.stOffense).sorted
-    val totalStOffense = dotProduct(stOffenses, StOffenseWeights)
+    val stOffenses = profiles.map(_.stOffense).sorted
+    val totalStOffense = dotProduct(stOffenses, stOffenseWeights)
 
     // Compute multi-target offense.
-    val mtOffenses = earlyMembers.map(_.mtOffense).sorted
-    val totalMtOffense = dotProduct(mtOffenses, MtOffenseWeights)
+    val mtOffenses = profiles.map(_.mtOffense).sorted
+    val totalMtOffense = dotProduct(mtOffenses, mtOffenseWeights)
 
     // Compute defense.
-    val defenses = earlyMembers.map(_.defense).sorted
-    val totalDefense = dotProduct(defenses, DefenseWeights)
+    val defenses = profiles.map(_.defense).sorted
+    val totalDefense = dotProduct(defenses, defenseWeights)
 
     // Compute healing.
-    val healings = earlyMembers.map(_.healing).sorted
-    val totalHealing = dotProduct(healings, HealingWeights)
+    val healings = profiles.map(_.healing).sorted
+    val totalHealing = dotProduct(healings, healingWeights)
 
     // Compute total score.
     dotProduct(Seq(totalStOffense, totalMtOffense, totalDefense, totalHealing, 0.0, 0.0),
-               EarlyGameWeights)
+               overallWeights)
   }
 
+  private def dotProduct(as: Seq[Double], bs: Seq[Double]): Double =
+    (for ((a, b) <- as zip bs) yield a * b) sum
+
+}
+
+object GameStageScoringProfile {
+
+  val Early = GameStageScoringProfile(
+    stOffenseWeights = Seq(1.0, 0.8, 0.6, 0.6),
+    mtOffenseWeights = Seq(1.0, 0.6, 0.4, 0.4),
+    defenseWeights = Seq(1.0, 0.5, 0.25, 0.25),
+    healingWeights = Seq(1.0, 0.8, 0.5, 0.5),
+    lifeWeights = Seq(1.0, 0.2, 0.1, 0.05),
+    dungeonExitWeights = Seq(1.0, 0.1, 0.05, 0.05),
+    overallWeights = Seq(1.0, 1.0, 1.0, 0.5, 0.0, 0.0)
+  )
+
+  val Mid = GameStageScoringProfile(
+    stOffenseWeights = Seq(1.0, 0.9, 0.7, 0.6),
+    mtOffenseWeights = Seq(1.0, 0.6, 0.4, 0.4),
+    defenseWeights = Seq(1.0, 0.5, 0.25, 0.25),
+    healingWeights = Seq(1.0, 0.8, 0.5, 0.5),
+    lifeWeights = Seq(1.0, 0.2, 0.1, 0.05),
+    dungeonExitWeights = Seq(1.0, 0.1, 0.05, 0.05),
+    overallWeights = Seq(0.8, 1.0, 1.2, 0.5, 1.2, 0.0)
+  )
+
+  val Late = GameStageScoringProfile(
+    stOffenseWeights = Seq(1.0, 0.9, 0.8, 0.7),
+    mtOffenseWeights = Seq(1.0, 0.6, 0.4, 0.4),
+    defenseWeights = Seq(1.0, 0.6, 0.4, 0.4),
+    healingWeights = Seq(1.0, 0.8, 0.5, 0.5),
+    lifeWeights = Seq(1.0, 0.3, 0.1, 0.05),
+    dungeonExitWeights = Seq(1.0, 0.1, 0.05, 0.05),
+    overallWeights = Seq(1.2, 0.9, 1.2, 0.7, 1.2, 0.4)
+  )
+
+}
+
+case class Party(index: Int, members: Seq[Member]) {
+
+  def score: Double = {
+    val stageScores = Seq(earlyGameScore(), midGameScore(), lateGameScore())
+    val stageWeights = Seq(1.0, 0.8, 1.3)
+    dotProduct(stageScores, stageWeights)
+  }
+
+  def earlyGameScore(): Double = {
+    val earlyProfiles = members.map(_.earlyGame)
+    GameStageScoringProfile.Early.score(earlyProfiles)
+  }
+
+  def midGameScore(): Double = {
+    val midProfiles = members.map(_.midGame)
+    GameStageScoringProfile.Mid.score(midProfiles)
+  }
+
+  def lateGameScore(): Double = {
+    val lateProfiles = members.map(_.lateGame)
+    GameStageScoringProfile.Late.score(lateProfiles)
+  }
+
+  private def dotProduct(as: Seq[Double], bs: Seq[Double]): Double =
+    (for ((a, b) <- as zip bs) yield a * b) sum
+
   override def toString(): String = members.map(_.shortName).mkString
-  def toCsvLine(): String = Seq(index, toString(), score()).mkString(",")
+  def toCsvLine(): String =
+    Seq(index, toString(), score, earlyGameScore(),
+        midGameScore(), lateGameScore()).mkString(",")
 
 }
 
@@ -115,8 +172,8 @@ object FinalFantasyParties extends App {
     Party(i, p.map(Classes(_)))
   }
   println(s"allParties.size = ${allParties.size}")
-  allParties.sortBy(_.score).reverse.foreach { p =>
-    println(p.toCsvLine)
+  allParties.sortBy(_.score).reverse.zipWithIndex.foreach { case (p, i) =>
+    println(s"$i,${p.toCsvLine}")
   }
 }
 
